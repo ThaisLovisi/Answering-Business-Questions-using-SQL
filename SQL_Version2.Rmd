@@ -1,0 +1,348 @@
+---
+title: "Untitled"
+author: "Thais Lovisi"
+date: "2023-03-17"
+output: html_document
+---
+
+## Introduction
+
+In this project, we're going to use SQL to answer some business questions. For that we will need to:
+
+Write a SQL query to extract the relevant data.
+Create plots where necessary to visualize this data.
+Write a short paragraph to discuss conclusions and explain your visualizations.
+
+<br>The The Chinook database is a database from a fictional shop (created by dataquest.io), provided in the chinook.db file.
+
+### R setup
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+install.packages("RSQLite")
+install.packages("DBI")
+
+library(RSQLite)
+library(DBI)
+library(ggplot2)
+```
+
+### Creating a run_query() function that takes in a SQL query as an argument and returns the result in a dataframe. 
+```{r}
+
+run_query <- function(){
+                      connect <- dbConnect(SQLite(), "chinook.db")
+                      result <- dbGetQuery(connect,query)
+                      disconnect <- dbDisconnect(connect)
+                      return(result)
+                      }
+                     
+```
+### Creating query set, to turn easier to modify the code without mess with the functions
+```{r}
+query_pred <- "SELECT name, type FROM sqlite_master                                   WHERE type IN ('table','view')"
+```
+###Creating a show_tables() function that calls the run_query() function to return a list of all tables and views in the database.
+```{r}
+show_tables <- function(){
+                      query <- query_pred
+                      return(run_query(query))
+                }
+
+show_tables()
+```
+The Chinook record store has just signed a deal with a new record label, and you're in charge of choosing the first three albums to be added to the store. There are four albums to choose from, and all four are by artists who don't have any tracks in the store right now. Below is the list of artist names and the genre of music they produce:
+
+Artist              Name	Genre
+Regal	                Hip-Hop
+Red Tone	              Punk
+Meteor and the Girls	  Pop
+Slim Jim Bites	       Blues
+
+The record label specializes in artists from the USA, and they have given Chinook some money to advertise the new albums in the USA. To aid in selecting albums, we're interested in finding out which genres sell the best in the USA.I need to to find out which genres sell the most tracks in the USA, and then create a visualization of that data.
+
+<br> The data that we need is at genre_id at track table, invoice line has quantitiy purchased, and both of them share track_id. Country is at customer table that shares customer_id with invopice table. Invoice table shares invoice_id with invoice line. So let's create a new query to extract the data
+
+```{r}
+query_pred <- " 
+WITH 
+                  usa_select AS (
+                                  SELECT  cust.country, 
+                                  i.invoice_id
+                                  FROM customer cust
+                                  INNER JOIN  invoice i ON
+                                                i.customer_id =
+                                                cust.customer_id
+                                  WHERE cust.country = 'USA'),
+                 genre_quantity AS (
+                                    SELECT t.genre_id, 
+                                           il.*,
+                                           g.name
+                                    FROM track t
+                                    INNER JOIN invoice_line il ON
+                                    il.track_id = t.track_id
+                                    INNER JOIN genre g ON
+                                    g.genre_id = t.genre_id
+                                    )
+                                SELECT US.country,
+                                name,
+                      COUNT(GQ.invoice_line_id) track_sold,
+                     CAST(COUNT(GQ.invoice_id)AS FLOAT)/(SELECT COUNT(*) from usa_select) percentage_sold
+                FROM  usa_select US
+                INNER JOIN genre_quantity GQ ON GQ.invoice_id = US.invoice_id
+                GROUP BY GQ.genre_id
+                ORDER BY track_sold DESC
+                
+"
+```
+###Running our function
+```{r}
+show_tables <- function(){
+                      query <- query_pred
+                      return(run_query(query))
+                }
+
+query_pred <- " 
+WITH 
+                  usa_genre_quantity AS (
+                                    SELECT t.genre_id, 
+                                           il.*,
+                                           g.name
+                                    FROM track t
+                                    INNER JOIN invoice i ON
+                                    i.invoice_id= il.invoice_id
+                                    INNER JOIN customer cust ON
+                                    cust.customer_id= i.customer_id
+                                    INNER JOIN invoice_line il ON
+                                    il.track_id = t.track_id
+                                    INNER JOIN genre g ON
+                                    g.genre_id = t.genre_id
+                                    WHERE cust.country = 'USA'
+                                    )
+                                SELECT   name,
+                                        COUNT(invoice_line_id) track_sold,
+                                        cast(count(invoice_line_id) AS FLOAT) / (
+        SELECT COUNT(*) from usa_genre_quantity
+    ) percentage_sold
+                FROM  usa_genre_quantity 
+  GROUP BY genre_id
+              
+               
+                "
+show_tables()
+```
+### Creating a plot
+```{r pressure, echo=FALSE}
+top_sales <- run_query(query_pred)
+ggplot(data = top_sales, aes(x = name, y = percentage_sold)) +
+  geom_bar(stat = "identity", color = "cyan", fill = "cyan")+
+  theme(axis.text.x = element_text(size = 8, angle = 90))
+
+    
+```
+<br> 
+
+From the four albums to choose from, provided in a list (see below), The genres represented punk, blues and pop are the highest rated in terms of  best sell in the USA.
+
+Artist              Name	Genre
+Regal	                Hip-Hop
+Red Tone	              Punk
+Meteor and the Girls	  Pop
+Slim Jim Bites	       Blues
+
+<br> Hence we don't have an profile for the artists and we need to choose just for sell criteria the investment must be at Red Tone	(Punk), Slim Jim Bites (Blues), and  Meteor and the Girls (Pop) respectively.	
+
+### Analyzing Employee Sales Performance
+Each customer for the Chinook store gets assigned to a sales support agent within the company when they first make a purchase. Lets's analyze the purchases of customers belonging to each employee to see if any sales support agent is performing either better or worse than the others.
+
+For this task:
+
+Write a query that finds the total dollar amount of sales assigned to each sales support agent within the company. Add any extra attributes for that employee that you find are relevant to the analysis.
+Create a plot of the results of your query.
+Write a short statement describing your results, and provide a possible interpretation.
+
+#### Total sales in dollars for employee
+```{r}
+query_pred <- "WITH 
+e_sells AS (
+            SELECT e.*,
+                                  i.total
+            FROM employee e
+            INNER JOIN  customer c ON c.support_rep_id = e.employee_id
+            INNER JOIN invoice i ON i.customer_id = c.customer_id
+            )
+
+SELECT first_name || ' ' || last_name employee_name,
+      title,
+      SUM(total) total_sales,
+      hire_date
+FROM e_sells
+GROUP BY employee_name
+ORDER BY total_sales DESC
+
+"
+
+run_query(query_pred)
+```
+
+```{r}
+to_plot <- run_query(query_pred)
+ggplot(data = to_plot, aes(x = employee_name, y = total_sales)) +
+  geom_bar(stat = "identity", color = "grey50", fill = "grey50")+
+  theme(axis.text.x = element_text(size = 8, angle = 90))
+
+```
+<br> Jane Peacock has the highest amount of sales, but she also has been at the company the longest.
+
+
+### Analyzing Sales by Country
+
+Because there are a number of countries with only one customer, you should group these customers as "Other" in your analysis. You can use the following "trick" to force the ordering of "Other" to last in your analysis.
+
+If there is a particular value that you would like to force to the top or bottom of results, you can put what would normally be your most outer query in a subquery with a case statement that adds a numeric column, and then in the outer query sort by that column. Here's an example - let's start by creating a view so we're working with a manageable number of rows:
+
+```{r}
+query_pred <- '
+WITH country_or_other AS
+    (
+     SELECT
+       CASE
+           WHEN (
+                 SELECT count(*)
+                 FROM customer
+                 where country = c.country
+                ) = 1 THEN "Other"
+           ELSE c.country
+       END AS country,
+       c.customer_id,
+       il.*
+     FROM invoice_line il
+     INNER JOIN invoice i ON i.invoice_id = il.invoice_id
+     INNER JOIN customer c ON c.customer_id = i.customer_id
+    )
+SELECT
+    country,
+    customers,
+    total_sales,
+    average_order,
+    customer_lifetime_value
+FROM
+    (
+    SELECT
+        country,
+        count(distinct customer_id) customers,
+        SUM(unit_price) total_sales,
+        SUM(unit_price) / count(distinct customer_id) customer_lifetime_value,
+        SUM(unit_price) / count(distinct invoice_id) average_order,
+        CASE
+            WHEN country = "Other" THEN 1
+            ELSE 0
+        END AS sort
+    FROM country_or_other
+    GROUP BY country
+    ORDER BY sort ASC, total_sales DESC
+    );
+'
+run_query(query_pred)
+```
+
+```{r}
+
+```
+```{r}
+country_metrics <- run_query(sales_by_country)
+ggplot(data = country_metrics, aes(x = reorder(country, -total_sales), 
+                                   y = total_sales, 
+                                   fill = country)) +
+  geom_bar(stat = "identity") +
+  labs(
+    title = "Total sales by country",
+    x = "Country",
+    y = "Total Sales"
+  ) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggplot(data = country_metrics, aes(x = reorder(country, -customers), 
+                                   y = customers, 
+                                   fill = country)) +
+  geom_bar(stat = "identity") +
+  coord_polar("y") + 
+  labs(
+    title = "Number of customers by country",
+    x = "Country",
+    y = "Customers"
+  )
+ggplot(data = country_metrics, aes(x = reorder(country, -customer_lifetime_value), 
+                                   y = customer_lifetime_value, 
+                                   color = country)) +
+  geom_point(stat = "identity") +
+  labs(
+    title = "Customer lifetime value by country",
+    x = "Country",
+    y = "Customer Lifetime Value"
+  ) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+#### Albums vs. Individual Tracks
+
+The core aspect to the analysis is identifying if an invoice contains all the tracks from an album. We can do this by getting the list of tracks from an invoice and comparing it to the list of tracks from an album. We can find the album to compare the purchase to by looking up the album that one of the purchased tracks belongs to. It doesn't matter which track we pick, since if it's an album purchase, that album will be the same for all tracks.
+
+Write a query that categorizes each invoice as either an album purchase or not, and calculates the following summary statistics:
+Number of invoices
+Percentage of invoices
+
+```{r}
+query_pred <- "WITH invoice_first_track AS
+    (
+     SELECT
+         il.invoice_id invoice_id,
+         MIN(il.track_id) first_track_id
+     FROM invoice_line il
+     GROUP BY 1
+    )
+SELECT
+    album_purchase,
+    COUNT(invoice_id) number_of_invoices,
+    CAST(count(invoice_id) AS FLOAT) / (
+                                         SELECT COUNT(*) FROM invoice
+                                      ) percent
+FROM
+    (
+    SELECT
+        ifs.*,
+        CASE
+            WHEN
+                 (
+                  SELECT t.track_id FROM track t
+                  WHERE t.album_id = (
+                                      SELECT t2.album_id FROM track t2
+                                      WHERE t2.track_id = ifs.first_track_id
+                                     ) 
+                  EXCEPT 
+                  SELECT il2.track_id FROM invoice_line il2
+                  WHERE il2.invoice_id = ifs.invoice_id
+                 ) IS NULL
+             AND
+                 (
+                  SELECT il2.track_id FROM invoice_line il2
+                  WHERE il2.invoice_id = ifs.invoice_id
+                  EXCEPT 
+                  SELECT t.track_id FROM track t
+                  WHERE t.album_id = (
+                                      SELECT t2.album_id FROM track t2
+                                      WHERE t2.track_id = ifs.first_track_id
+                                     ) 
+                 ) IS NULL
+             THEN 'yes'
+             ELSE 'no'
+         END AS 'album_purchase'
+     FROM invoice_first_track ifs
+    )
+GROUP BY album_purchase"
+
+run_query(query_pred)
+```
+
+Album purchases account for almost a quarter of the total sales, so it is inadvisable to change strategy to just purchase the most popular tracks.
+
+Which artist is used in the most playlists?
+How many tracks have been purchased vs not purchased?
+Is the range of tracks in the store reflective of their sales popularity?
+Do protected vs. non-protected media types have an effect on popularity?
+
+https://community.dataquest.io/tags/c/share/47/374

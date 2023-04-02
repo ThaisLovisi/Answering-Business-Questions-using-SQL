@@ -1,0 +1,4 @@
+"0","run_query <- function(connect <- dbConnect(SQLite(), ""chinook.db"")
+"
+"2","Error: unexpected assignment in ""run_query <- function(connect <-""
+"
